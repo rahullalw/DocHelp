@@ -1,3 +1,18 @@
+import fs from 'fs';
+import path from 'path';
+import crypto from 'crypto';
+import { analyzeWithGemini } from './analyzeGemini.js';
+import { cleanAndFormatText } from '../utils/textCleaner.js';
+import { extractTextFromPDF } from '../utils/pdfExtractor.js';
+import { initializeProjectContext } from './chatService.js';
+
+
+// This service contains the core business logic for analyzing a report.
+
+/**
+ * Processes the uploaded medical report file.
+ * Extracts text from PDF, formats it, and analyzes it using Gemini AI
+ */
 export const processReport = async (file) => {
   // 1. Check for the GEMINI_API_KEY environment variable.
   if (!process.env.GEMINI_API_KEY) {
@@ -6,29 +21,63 @@ export const processReport = async (file) => {
   }
 
   console.log(`Processing file: ${file.originalname} (${file.size} bytes)`);
-  console.log(`Simulating API call to: ${process.env.GEMINI_API_KEY}`);
 
-  // 2. Simulate the AI Analysis (Placeholder)
-  await new Promise(resolve => setTimeout(resolve, 1500)); // Simulate 1.5s network delay
+  try {
+    // 2. Extract text from the uploaded file
+    let extractedText = '';
+    
+    if (file.mimetype === 'application/pdf') {
+      // Parse PDF and extract text
+      extractedText = await extractTextFromPDF(file.buffer);
+      saveInputs(extractedText); // Save the raw text input for debugging
+      console.log('PDF text extracted successfully');
+    } else if (file.mimetype === 'text/plain' || file.originalname.endsWith('.txt')) {
+      // Handle plain text files
+      extractedText = file.buffer.toString('utf-8');
+      console.log('Text file content extracted');
+    } else {
+      throw new Error('Unsupported file type. Please upload a PDF or TXT file.');
+    }
 
-  // 3. Return a mock structured response.
-  const mockAnalysis = {
-    patient_summary: {
-      name: 'John Doe',
-      age: 45,
-      condition: 'Stable',
-    },
-    key_findings: [
-      'Elevated white blood cell count',
-      'Normal cholesterol levels',
-      'Slight vitamin D deficiency',
-    ],
-    recommendations: [
-      'Follow-up appointment in 3 months.',
-      'Increase vitamin D intake through diet or supplements.',
-    ],
-    confidence_score: 0.95,
-  };
+    // 3. Clean and format the extracted text
+    const cleanedText = cleanAndFormatText(extractedText);
+    
+    if (!cleanedText || cleanedText.trim().length < 10) {
+      throw new Error('Unable to extract meaningful text from the file. Please ensure the file contains readable medical report content.');
+    }
 
-  return mockAnalysis;
+    console.log('Extracted text preview:', cleanedText.substring(0, 200) + '...');
+
+    // 4. Analyze with Gemini AI
+    const analysis = await analyzeWithGemini(cleanedText);
+    
+    // 5. Initialize project context for chat functionality
+    const projectId = crypto.randomUUID();
+    const persona = initializeProjectContext(projectId, analysis);
+
+    return { projectId, analysis, persona };
+
+  } catch (error) {
+    console.error('Error processing report:', error.message);
+    throw error;
+  }
+};
+
+
+
+const saveInputs = (inputText) => {
+  try {
+    const inputsDir = path.join(process.cwd(), 'gemini-inputs');
+    if (!fs.existsSync(inputsDir)) {
+      fs.mkdirSync(inputsDir);
+    }
+    
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const filePath = path.join(inputsDir, `input-${timestamp}.txt`);
+
+    fs.writeFileSync(filePath, inputText, 'utf-8');
+    console.log(`User input saved to: ${filePath}`);
+  } catch (error) {
+    console.error('Error saving user input:', error);
+  }
 };

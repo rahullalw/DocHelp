@@ -1,4 +1,13 @@
-# Medical Report Analyzer MVP
+# Medical R### 1. Setup Backend Environment
+
+Navigate to the backend package and create an environment file:
+
+```bash
+cd packages/backend
+cp .env.example .env
+```
+
+Open the newly created `.env` file and add your `GEMINI_API_KEY`. Get your free API key from [Google AI Studio](https://makersuite.google.com/app/apikey).
 
 This is a full-stack, production-ready MVP built with a React frontend and a Node.js/Express backend. It's structured as a monorepo using pnpm workspaces.
 
@@ -18,12 +27,12 @@ cd packages/backend
 cp .env.example .env
 ```
 
-Open the newly created `.env` file and add your `GEMINI_API_KEY`. This is the only secret the application needs.
+Open the newly created `.env` file and add your `GEMINI_API_KEY`. Get your free API key from [Google AI Studio](https://makersuite.google.com/app/apikey).
 
-```
+```env
 # .env in packages/backend
 PORT=3001
-GEMINI_API_KEY=[https://your-gemini-api-endpoint.com/api/analyze](https://your-gemini-api-endpoint.com/api/analyze)
+GEMINI_API_KEY=your_gemini_api_key_here
 ```
 
 ### 2. Install Dependencies

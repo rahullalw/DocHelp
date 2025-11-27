@@ -1,6 +1,6 @@
 import express from 'express';
 import multer from 'multer';
-import { analyzeReport } from '../controllers/analysisController.js';
+import { analyzeReport, testAnalysis } from '../controllers/analysisController.js';
 
 const router = express.Router();
 
@@ -14,5 +14,9 @@ const upload = multer({ storage: multer.memoryStorage() });
 // The `upload.single('report')` middleware processes a single file upload
 // from a form field named 'report'.
 router.post('/', upload.single('report'), analyzeReport);
+
+// Define a new test route to analyze a saved input file.
+// GET /api/v1/analyze/test
+router.get('/test', testAnalysis);
 
 export default router;

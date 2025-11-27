@@ -4,8 +4,7 @@
   "scripts": {
     "dev": "concurrently \"npm:dev:backend\" \"npm:dev:frontend\"",
     "dev:backend": "pnpm --filter backend dev",
-    "dev:frontend": "pnpm --filter frontend dev",
-    "install": "pnpm --filter \"./packages/**\" install"
+    "dev:frontend": "pnpm --filter frontend dev"
   },
   "devDependencies": {
     "concurrently": "^8.2.2"

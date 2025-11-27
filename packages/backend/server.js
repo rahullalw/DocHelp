@@ -4,6 +4,7 @@ import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import analysisRoutes from './src/api/routes/analysisRoutes.js';
+import chatRoutes from './src/api/routes/chatRoutes.js';
 
 // Load environment variables from .env file
 dotenv.config();
@@ -33,6 +34,7 @@ app.use(express.json());
 // All routes related to analysis are handled by this router.
 // This keeps our server.js file clean and modular.
 app.use('/api/v1/analyze', analysisRoutes);
+app.use('/api/v1/chat', chatRoutes);
 
 // --- Global Error Handler ---
 // A simple catch-all for errors.
