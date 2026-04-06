@@ -1,8 +1,20 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
+import { 
+  SignInButton, 
+  SignUpButton, 
+  UserButton, 
+  useUser, 
+  useAuth,
+  SignedIn,
+  SignedOut
+} from '@clerk/clerk-react';
 
-const API_BASE = 'http://localhost:3001/api/v1';
+const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 
-// Icons as simple components
+// ============================================================================
+// ICONS
+// ============================================================================
+
 const UploadIcon = () => (
   <svg className="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
@@ -27,9 +39,27 @@ const ChatBubbleIcon = () => (
   </svg>
 );
 
-const RefreshIcon = () => (
+const FolderIcon = () => (
+  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+  </svg>
+);
+
+const PlusIcon = () => (
+  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+  </svg>
+);
+
+const ArrowLeftIcon = () => (
+  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+  </svg>
+);
+
+const TrashIcon = () => (
   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
   </svg>
 );
 
@@ -63,13 +93,16 @@ const FileIcon = () => (
   </svg>
 );
 
-const TrashIcon = () => (
-  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+const UserIcon = () => (
+  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
   </svg>
 );
 
-// Typing indicator component
+// ============================================================================
+// COMPONENTS
+// ============================================================================
+
 const TypingIndicator = () => (
   <div className="chat-bubble assistant">
     <div className="typing-indicator">
@@ -80,7 +113,6 @@ const TypingIndicator = () => (
   </div>
 );
 
-// Status badge component
 const StatusBadge = ({ status, children }) => {
   const statusClass = status?.toLowerCase() || 'low';
   return (
@@ -90,40 +122,218 @@ const StatusBadge = ({ status, children }) => {
   );
 };
 
+const LimitsDisplay = ({ limits, isGuest }) => {
+  if (!limits) return null;
+  
+  return (
+    <div className="flex items-center gap-4 text-sm">
+      <span className="text-sage-500">
+        Projects: <strong className="text-sage-700">
+          {limits.projectsRemaining === 'unlimited' ? '∞' : `${limits.projectsRemaining}/${limits.maxProjects}`}
+        </strong>
+      </span>
+      {isGuest && (
+        <span className="text-amber-600 text-xs">
+          Guest mode - Sign in for more
+        </span>
+      )}
+    </div>
+  );
+};
+
+// ============================================================================
+// MAIN APP
+// ============================================================================
+
 export default function App() {
-  // State management
+  // Clerk hooks
+  const { isLoaded: isClerkLoaded, isSignedIn, user: clerkUser } = useUser();
+  const { getToken } = useAuth();
+
+  // App state
+  const [view, setView] = useState('home'); // 'home', 'upload', 'project', 'projects'
   const [file, setFile] = useState(null);
   const [isUploading, setIsUploading] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
-  const [analysisResult, setAnalysisResult] = useState(null);
-  const [projectId, setProjectId] = useState(null);
-  const [persona, setPersona] = useState(null);
   const [error, setError] = useState(null);
+  
+  // User and project state
+  const [userStatus, setUserStatus] = useState(null);
+  const [guestSessionId, setGuestSessionId] = useState(null);
+  const [currentProject, setCurrentProject] = useState(null);
+  const [projects, setProjects] = useState([]);
   
   // Chat state
   const [messages, setMessages] = useState([]);
   const [inputMessage, setInputMessage] = useState('');
   const [isSending, setIsSending] = useState(false);
-  const [showChat, setShowChat] = useState(false);
   
   // Refs
   const chatEndRef = useRef(null);
   const fileInputRef = useRef(null);
 
-  // Auto-scroll chat to bottom
+  // ============================================================================
+  // API HELPERS
+  // ============================================================================
+
+  const getHeaders = async () => {
+    const headers = { 'Content-Type': 'application/json' };
+    
+    if (isSignedIn) {
+      try {
+        const token = await getToken();
+        if (token) {
+          headers['Authorization'] = `Bearer ${token}`;
+        }
+      } catch (e) {
+        console.error('Failed to get token:', e);
+      }
+    } else if (guestSessionId) {
+      headers['X-Guest-Session'] = guestSessionId;
+    }
+    
+    return headers;
+  };
+
+  const getFormDataHeaders = async () => {
+    const headers = {};
+    
+    if (isSignedIn) {
+      try {
+        const token = await getToken();
+        if (token) {
+          headers['Authorization'] = `Bearer ${token}`;
+        }
+      } catch (e) {
+        console.error('Failed to get token:', e);
+      }
+    } else if (guestSessionId) {
+      headers['X-Guest-Session'] = guestSessionId;
+    }
+    
+    return headers;
+  };
+
+  // ============================================================================
+  // EFFECTS
+  // ============================================================================
+
+  // Load user status on mount and when auth changes
+  useEffect(() => {
+    if (!isClerkLoaded) return;
+    loadUserStatus();
+  }, [isClerkLoaded, isSignedIn]);
+
+  // Auto-scroll chat
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  // File handlers
+  // Load guest session from localStorage
+  useEffect(() => {
+    const savedGuestSession = localStorage.getItem('dochelp_guest_session');
+    if (savedGuestSession) {
+      setGuestSessionId(savedGuestSession);
+    }
+  }, []);
+
+  // ============================================================================
+  // API FUNCTIONS
+  // ============================================================================
+
+  const loadUserStatus = async () => {
+    try {
+      const headers = await getHeaders();
+      const response = await fetch(`${API_BASE}/api/v1/user/status`, { headers });
+      const data = await response.json();
+      
+      setUserStatus(data);
+      setProjects(data.projects || []);
+      
+      // Save guest session if new one was created
+      if (data.guestSessionId) {
+        setGuestSessionId(data.guestSessionId);
+        localStorage.setItem('dochelp_guest_session', data.guestSessionId);
+      }
+    } catch (err) {
+      console.error('Failed to load user status:', err);
+    }
+  };
+
+  const loadProject = async (projectId) => {
+    try {
+      const headers = await getHeaders();
+      const response = await fetch(`${API_BASE}/api/v1/user/projects/${projectId}`, { headers });
+      
+      if (!response.ok) {
+        throw new Error('Failed to load project');
+      }
+      
+      const data = await response.json();
+      setCurrentProject(data.project);
+      
+      // If there's conversation history, use it
+      if (data.project.conversationHistory?.length > 0) {
+        setMessages(data.project.conversationHistory);
+      } else {
+        // No history - get AI-generated initial summary
+        setMessages([{ role: 'assistant', content: 'Loading your report analysis...' }]);
+        
+        try {
+          const summaryResponse = await fetch(`${API_BASE}/api/v1/chat/initial/${projectId}`, { headers });
+          const summaryData = await summaryResponse.json();
+          
+          if (summaryResponse.ok) {
+            setMessages([{ role: 'assistant', content: summaryData.summary }]);
+          } else {
+            // Fallback to simple message
+            setMessages([{
+              role: 'assistant',
+              content: `Hello${data.project.persona?.name ? `, ${data.project.persona.name}` : ''}! I'm Dr. HealthGuide. I've reviewed your ${data.project.persona?.reportType || 'medical report'}. What would you like to know about your results?`
+            }]);
+          }
+        } catch (summaryErr) {
+          console.error('Failed to load initial summary:', summaryErr);
+          // Fallback to simple message
+          setMessages([{
+            role: 'assistant',
+            content: `Hello${data.project.persona?.name ? `, ${data.project.persona.name}` : ''}! I'm Dr. HealthGuide. I've reviewed your ${data.project.persona?.reportType || 'medical report'}. What would you like to know about your results?`
+          }]);
+        }
+      }
+      
+      setView('project');
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  const deleteProject = async (projectId) => {
+    if (!confirm('Are you sure you want to delete this project?')) return;
+    
+    try {
+      const headers = await getHeaders();
+      await fetch(`${API_BASE}/api/v1/user/projects/${projectId}`, {
+        method: 'DELETE',
+        headers
+      });
+      
+      setProjects(prev => prev.filter(p => p.id !== projectId));
+      loadUserStatus();
+    } catch (err) {
+      console.error('Failed to delete project:', err);
+    }
+  };
+
+  // ============================================================================
+  // FILE HANDLERS
+  // ============================================================================
+
   const handleFileChange = (e) => {
     const selectedFile = e.target.files[0];
     if (selectedFile) {
       setFile(selectedFile);
       setError(null);
-      setAnalysisResult(null);
-      setProjectId(null);
-      setMessages([]);
     }
   };
 
@@ -142,29 +352,30 @@ export default function App() {
     setIsDragOver(false);
     const droppedFile = e.dataTransfer.files[0];
     if (droppedFile) {
-        setFile(droppedFile);
+      setFile(droppedFile);
       setError(null);
-        setAnalysisResult(null);
-      setProjectId(null);
-      setMessages([]);
     }
   }, []);
 
-  // Upload and analyze
+  // ============================================================================
+  // UPLOAD & ANALYZE
+  // ============================================================================
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!file) return;
 
     setIsUploading(true);
     setError(null);
-    setAnalysisResult(null);
 
     const formData = new FormData();
     formData.append('report', file);
 
     try {
-      const response = await fetch(`${API_BASE}/analyze`, {
+      const headers = await getFormDataHeaders();
+      const response = await fetch(`${API_BASE}/api/v1/analyze`, {
         method: 'POST',
+        headers,
         body: formData,
       });
 
@@ -174,16 +385,52 @@ export default function App() {
         throw new Error(data.message || 'Analysis failed');
       }
 
-      setAnalysisResult(data.analysis);
-      setProjectId(data.projectId);
-      setPersona(data.persona);
+      // Save guest session if provided
+      if (data.guestSessionId) {
+        setGuestSessionId(data.guestSessionId);
+        localStorage.setItem('dochelp_guest_session', data.guestSessionId);
+      }
+
+      // Set current project
+      const newProject = {
+        id: data.projectId,
+        name: `${data.persona?.reportType || 'Medical Report'} - ${new Date().toLocaleDateString()}`,
+        reportAnalysis: data.analysis,
+        persona: data.persona,
+        conversationHistory: [],
+        chatCount: 0
+      };
+      setCurrentProject(newProject);
       
-      // Add welcome message from doctor
-      setMessages([{
-        role: 'assistant',
-        content: `Hello${data.persona?.name ? `, ${data.persona.name}` : ''}! I'm Dr. HealthGuide, and I've reviewed your ${data.persona?.reportType || 'medical report'}. I'm here to help you understand your results and answer any questions you might have. What would you like to know?`
-      }]);
-      setShowChat(true);
+      // Get AI-generated initial summary
+      setMessages([{ role: 'assistant', content: 'Analyzing your report...' }]);
+      
+      try {
+        const headers = await getHeaders();
+        const summaryResponse = await fetch(`${API_BASE}/api/v1/chat/initial/${data.projectId}`, { headers });
+        const summaryData = await summaryResponse.json();
+        
+        if (summaryResponse.ok) {
+          setMessages([{ role: 'assistant', content: summaryData.summary }]);
+        } else {
+          // Fallback
+          setMessages([{
+            role: 'assistant',
+            content: `Hello${data.persona?.name ? `, ${data.persona.name}` : ''}! I'm Dr. HealthGuide, and I've reviewed your ${data.persona?.reportType || 'medical report'}. I'm here to help you understand your results and answer any questions. What would you like to know?`
+          }]);
+        }
+      } catch (summaryErr) {
+        console.error('Failed to load initial summary:', summaryErr);
+        // Fallback
+        setMessages([{
+          role: 'assistant',
+          content: `Hello${data.persona?.name ? `, ${data.persona.name}` : ''}! I'm Dr. HealthGuide, and I've reviewed your ${data.persona?.reportType || 'medical report'}. I'm here to help you understand your results and answer any questions. What would you like to know?`
+        }]);
+      }
+      
+      setFile(null);
+      setView('project');
+      loadUserStatus();
 
     } catch (err) {
       setError(err.message);
@@ -192,10 +439,13 @@ export default function App() {
     }
   };
 
-  // Send chat message
+  // ============================================================================
+  // CHAT
+  // ============================================================================
+
   const sendMessage = async (e) => {
     e.preventDefault();
-    if (!inputMessage.trim() || !projectId || isSending) return;
+    if (!inputMessage.trim() || !currentProject?.id || isSending) return;
 
     const userMessage = inputMessage.trim();
     setInputMessage('');
@@ -203,10 +453,11 @@ export default function App() {
     setIsSending(true);
 
     try {
-      const response = await fetch(`${API_BASE}/chat`, {
+      const headers = await getHeaders();
+      const response = await fetch(`${API_BASE}/api/v1/chat`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ projectId, message: userMessage }),
+        headers,
+        body: JSON.stringify({ projectId: currentProject.id, message: userMessage }),
       });
 
       const data = await response.json();
@@ -216,22 +467,31 @@ export default function App() {
       }
 
       setMessages(prev => [...prev, { role: 'assistant', content: data.response }]);
+      
+      // Update chat count
+      setCurrentProject(prev => ({ ...prev, chatCount: data.chatCount }));
+      
     } catch (err) {
       setMessages(prev => [...prev, { 
         role: 'assistant', 
-        content: `I apologize, but I encountered an error: ${err.message}. Please try again.` 
+        content: err.message.includes('limit') 
+          ? `${err.message}`
+          : `I apologize, but I encountered an error: ${err.message}. Please try again.` 
       }]);
     } finally {
       setIsSending(false);
     }
   };
 
-  // Clear chat
   const clearChat = async () => {
-    if (!projectId) return;
+    if (!currentProject?.id) return;
     
     try {
-      await fetch(`${API_BASE}/chat/${projectId}`, { method: 'DELETE' });
+      const headers = await getHeaders();
+      await fetch(`${API_BASE}/api/v1/chat/${currentProject.id}`, { 
+        method: 'DELETE',
+        headers 
+      });
       setMessages([{
         role: 'assistant',
         content: "I've cleared our conversation history. Feel free to ask me anything about your report!"
@@ -241,17 +501,12 @@ export default function App() {
     }
   };
 
-  // Reset everything
-  const resetAll = () => {
-    setFile(null);
-    setAnalysisResult(null);
-    setProjectId(null);
-    setPersona(null);
-    setMessages([]);
-    setError(null);
-    setShowChat(false);
-    if (fileInputRef.current) fileInputRef.current.value = '';
-  };
+  // ============================================================================
+  // RENDER
+  // ============================================================================
+
+  const isGuest = !isSignedIn;
+  const limits = userStatus?.limits;
 
   return (
     <div className="min-h-screen gradient-bg">
@@ -259,7 +514,10 @@ export default function App() {
       <header className="border-b border-sage-200/50 bg-white/60 backdrop-blur-sm sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
+            <div 
+              className="flex items-center gap-3 cursor-pointer"
+              onClick={() => { setView('home'); setCurrentProject(null); }}
+            >
               <div className="w-10 h-10 bg-gradient-to-br from-mint-400 to-sage-500 rounded-xl flex items-center justify-center text-white shadow-md">
                 <HeartPulseIcon />
               </div>
@@ -268,22 +526,46 @@ export default function App() {
                 <p className="text-xs text-sage-500">AI Medical Report Analyzer</p>
               </div>
             </div>
-            {analysisResult && (
-              <button
-                onClick={resetAll}
-                className="flex items-center gap-2 px-4 py-2 text-sm text-sage-600 hover:text-sage-800 hover:bg-sage-100 rounded-lg transition-colors"
-              >
-                <RefreshIcon />
-                New Analysis
-              </button>
-            )}
+            
+            <div className="flex items-center gap-4">
+              {limits && <LimitsDisplay limits={limits} isGuest={isGuest} />}
+              
+              {isClerkLoaded && (
+                <>
+                  <SignedIn>
+                    <button
+                      onClick={() => setView('projects')}
+                      className="flex items-center gap-2 px-3 py-2 text-sm text-sage-600 hover:text-sage-800 hover:bg-sage-100 rounded-lg transition-colors"
+                    >
+                      <FolderIcon />
+                      My Projects
+                    </button>
+                    <UserButton afterSignOutUrl="/" />
+                  </SignedIn>
+                  
+                  <SignedOut>
+                    <SignInButton mode="modal">
+                      <button className="px-4 py-2 text-sm text-sage-600 hover:text-sage-800 hover:bg-sage-100 rounded-lg transition-colors">
+                        Sign In
+                      </button>
+                    </SignInButton>
+                    <SignUpButton mode="modal">
+                      <button className="px-4 py-2 text-sm bg-sage-700 text-white rounded-lg hover:bg-sage-800 transition-colors">
+                        Sign Up
+                      </button>
+                    </SignUpButton>
+                  </SignedOut>
+                </>
+              )}
+            </div>
           </div>
         </div>
-        </header>
+      </header>
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {!analysisResult ? (
-          /* Upload Section */
+        
+        {/* HOME VIEW */}
+        {view === 'home' && (
           <div className="max-w-2xl mx-auto animate-fade-in">
             <div className="text-center mb-8">
               <h2 className="font-display text-3xl sm:text-4xl font-semibold text-sage-800 mb-3">
@@ -295,19 +577,56 @@ export default function App() {
             </div>
 
             <div className="glass-card rounded-2xl p-8">
-          <form onSubmit={handleSubmit}>
-            <div 
+              {/* Show existing projects for signed-in users */}
+              {isSignedIn && projects.length > 0 && (
+                <div className="mb-6 pb-6 border-b border-sage-200">
+                  <h3 className="font-medium text-sage-700 mb-3">Your Recent Projects</h3>
+                  <div className="space-y-2">
+                    {projects.slice(0, 3).map(project => (
+                      <button
+                        key={project.id}
+                        onClick={() => loadProject(project.id)}
+                        className="w-full flex items-center justify-between p-3 bg-sage-50 hover:bg-sage-100 rounded-lg transition-colors text-left"
+                      >
+                        <div>
+                          <p className="font-medium text-sage-700">{project.name}</p>
+                          <p className="text-xs text-sage-500">{project.chatCount} messages</p>
+                        </div>
+                        <ArrowLeftIcon className="rotate-180" />
+                      </button>
+                    ))}
+                  </div>
+                  {projects.length > 3 && (
+                    <button
+                      onClick={() => setView('projects')}
+                      className="mt-3 text-sm text-sage-600 hover:text-sage-800"
+                    >
+                      View all {projects.length} projects →
+                    </button>
+                  )}
+                </div>
+              )}
+
+              {/* Upload Section */}
+              <div className="text-center mb-4">
+                <h3 className="font-medium text-sage-700">
+                  {projects.length > 0 ? 'Analyze a New Report' : 'Get Started'}
+                </h3>
+              </div>
+
+              <form onSubmit={handleSubmit}>
+                <div
                   className={`upload-zone ${isDragOver ? 'drag-over' : ''}`}
-              onDragOver={handleDragOver}
-              onDragLeave={handleDragLeave}
-              onDrop={handleDrop}
+                  onDragOver={handleDragOver}
+                  onDragLeave={handleDragLeave}
+                  onDrop={handleDrop}
                   onClick={() => fileInputRef.current?.click()}
-            >
-              <input
+                >
+                  <input
                     ref={fileInputRef}
-                type="file"
-                className="hidden"
-                onChange={handleFileChange}
+                    type="file"
+                    className="hidden"
+                    onChange={handleFileChange}
                     accept=".pdf,.txt"
                   />
                   
@@ -335,18 +654,27 @@ export default function App() {
                       </>
                     )}
                   </div>
-            </div>
+                </div>
 
                 {error && (
                   <div className="mt-4 p-4 bg-coral-50 border border-coral-200 rounded-xl flex items-start gap-3">
                     <AlertTriangleIcon />
-                    <p className="text-coral-700 text-sm">{error}</p>
+                    <div>
+                      <p className="text-coral-700 text-sm">{error}</p>
+                      {error.includes('Guest') && (
+                        <SignInButton mode="modal">
+                          <button className="mt-2 text-sm text-coral-800 underline hover:no-underline">
+                            Sign in for more projects →
+                          </button>
+                        </SignInButton>
+                      )}
+                    </div>
                   </div>
                 )}
 
-              <button
-                type="submit"
-                disabled={!file || isUploading}
+                <button
+                  type="submit"
+                  disabled={!file || isUploading}
                   className="btn-primary w-full mt-6 flex items-center justify-center gap-2"
                 >
                   {isUploading ? (
@@ -357,15 +685,23 @@ export default function App() {
                   ) : (
                     <>
                       <HeartPulseIcon />
-                      Analyze Report
+                      {isGuest ? 'Analyze as Guest' : 'Analyze Report'}
                     </>
                   )}
-              </button>
+                </button>
               </form>
 
-              <p className="mt-6 text-center text-xs text-sage-400">
-                Your data is processed securely and not stored permanently
-              </p>
+              {isGuest && (
+                <p className="mt-4 text-center text-sm text-sage-500">
+                  Guest users: 1 report, 2 chat messages. 
+                  <SignInButton mode="modal">
+                    <button className="text-sage-700 underline hover:no-underline ml-1">
+                      Sign in
+                    </button>
+                  </SignInButton>
+                  {' '}for 5 reports & unlimited chat.
+                </p>
+              )}
             </div>
 
             {/* Features */}
@@ -387,13 +723,105 @@ export default function App() {
               ))}
             </div>
           </div>
-        ) : (
-          /* Results Section */
+        )}
+
+        {/* PROJECTS VIEW */}
+        {view === 'projects' && (
+          <div className="max-w-3xl mx-auto animate-fade-in">
+            <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => setView('home')}
+                  className="p-2 hover:bg-sage-100 rounded-lg transition-colors"
+                >
+                  <ArrowLeftIcon />
+                </button>
+                <h2 className="font-display text-2xl font-semibold text-sage-800">
+                  My Projects
+                </h2>
+              </div>
+              
+              {limits && limits.projectsRemaining !== 0 && (
+                <button
+                  onClick={() => setView('home')}
+                  className="btn-primary flex items-center gap-2"
+                >
+                  <PlusIcon />
+                  New Analysis
+                </button>
+              )}
+            </div>
+
+            {projects.length === 0 ? (
+              <div className="glass-card rounded-2xl p-12 text-center">
+                <FolderIcon className="w-16 h-16 text-sage-300 mx-auto mb-4" />
+                <h3 className="text-lg font-medium text-sage-700 mb-2">No projects yet</h3>
+                <p className="text-sage-500 mb-6">Upload your first medical report to get started</p>
+                <button
+                  onClick={() => setView('home')}
+                  className="btn-primary"
+                >
+                  Analyze a Report
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {projects.map(project => (
+                  <div
+                    key={project.id}
+                    className="glass-card rounded-xl p-4 flex items-center justify-between hover:shadow-md transition-shadow"
+                  >
+                    <button
+                      onClick={() => loadProject(project.id)}
+                      className="flex-1 text-left"
+                    >
+                      <h3 className="font-medium text-sage-800">{project.name}</h3>
+                      <div className="flex items-center gap-4 text-sm text-sage-500 mt-1">
+                        <span>{project.chatCount} messages</span>
+                        <span>{new Date(project.createdAt).toLocaleDateString()}</span>
+                      </div>
+                    </button>
+                    <button
+                      onClick={() => deleteProject(project.id)}
+                      className="p-2 text-sage-400 hover:text-coral-600 hover:bg-coral-50 rounded-lg transition-colors"
+                    >
+                      <TrashIcon />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {limits && (
+              <p className="mt-6 text-center text-sm text-sage-500">
+                {limits.projectsRemaining === 'unlimited' 
+                  ? 'Unlimited projects available'
+                  : `${limits.projectsRemaining} of ${limits.maxProjects} projects remaining`}
+              </p>
+            )}
+          </div>
+        )}
+
+        {/* PROJECT VIEW */}
+        {view === 'project' && currentProject && (
           <div className="grid lg:grid-cols-5 gap-6 animate-fade-in">
             {/* Analysis Results - Left Panel */}
             <div className="lg:col-span-3 space-y-6">
+              {/* Back Button & Title */}
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => { setView('home'); setCurrentProject(null); }}
+                  className="p-2 hover:bg-sage-100 rounded-lg transition-colors"
+                >
+                  <ArrowLeftIcon />
+                </button>
+                <h2 className="font-display text-xl font-semibold text-sage-800">
+                  {currentProject.name}
+                </h2>
+              </div>
+
               {/* Patient Summary */}
-              {analysisResult.patient_summary && (
+              {currentProject.reportAnalysis?.patient_summary && (
                 <div className="glass-card rounded-2xl p-6 animate-fade-in-up">
                   <div className="flex items-center gap-3 mb-4">
                     <div className="w-10 h-10 bg-sage-100 rounded-xl flex items-center justify-center text-sage-600">
@@ -404,40 +832,34 @@ export default function App() {
                         Report Summary
                       </h3>
                       <p className="text-sm text-sage-500">
-                        {analysisResult.patient_summary.report_type}
+                        {currentProject.reportAnalysis.patient_summary.report_type}
                       </p>
                     </div>
                   </div>
                   
                   <div className="grid sm:grid-cols-2 gap-4">
-                    {analysisResult.patient_summary.name && (
+                    {currentProject.reportAnalysis.patient_summary.name && (
                       <div className="p-3 bg-sage-50 rounded-lg">
                         <p className="text-xs text-sage-500 mb-1">Patient</p>
-                        <p className="font-medium text-sage-700">{analysisResult.patient_summary.name}</p>
+                        <p className="font-medium text-sage-700">{currentProject.reportAnalysis.patient_summary.name}</p>
                       </div>
                     )}
-                    {analysisResult.patient_summary.age && (
+                    {currentProject.reportAnalysis.patient_summary.age && (
                       <div className="p-3 bg-sage-50 rounded-lg">
                         <p className="text-xs text-sage-500 mb-1">Age</p>
-                        <p className="font-medium text-sage-700">{analysisResult.patient_summary.age} years</p>
-                      </div>
-                    )}
-                    {analysisResult.patient_summary.report_date && (
-                      <div className="p-3 bg-sage-50 rounded-lg">
-                        <p className="text-xs text-sage-500 mb-1">Report Date</p>
-                        <p className="font-medium text-sage-700">{analysisResult.patient_summary.report_date}</p>
+                        <p className="font-medium text-sage-700">{currentProject.reportAnalysis.patient_summary.age} years</p>
                       </div>
                     )}
                     <div className="p-3 bg-sage-50 rounded-lg sm:col-span-2">
                       <p className="text-xs text-sage-500 mb-1">Overall Status</p>
-                      <p className="font-medium text-sage-700">{analysisResult.patient_summary.overall_health_status}</p>
+                      <p className="font-medium text-sage-700">{currentProject.reportAnalysis.patient_summary.overall_health_status}</p>
                     </div>
                   </div>
                 </div>
               )}
 
               {/* Abnormal Findings */}
-              {analysisResult.abnormal_findings?.length > 0 && (
+              {currentProject.reportAnalysis?.abnormal_findings?.length > 0 && (
                 <div className="glass-card rounded-2xl p-6 animate-fade-in-up stagger-1">
                   <div className="flex items-center gap-3 mb-4">
                     <div className="w-10 h-10 bg-coral-100 rounded-xl flex items-center justify-center text-coral-600">
@@ -449,7 +871,7 @@ export default function App() {
                   </div>
                   
                   <div className="space-y-3">
-                    {analysisResult.abnormal_findings.map((finding, i) => (
+                    {currentProject.reportAnalysis.abnormal_findings.map((finding, i) => (
                       <div key={i} className="finding-card abnormal">
                         <div className="flex items-start justify-between gap-4 mb-2">
                           <h4 className="font-medium text-coral-800">{finding.parameter}</h4>
@@ -464,14 +886,14 @@ export default function App() {
                         {finding.clinical_significance && (
                           <p className="mt-2 text-sm text-coral-700/80">{finding.clinical_significance}</p>
                         )}
-                    </div>
-                  ))}
+                      </div>
+                    ))}
                   </div>
                 </div>
               )}
 
               {/* Health Concerns */}
-              {analysisResult.health_concerns?.length > 0 && (
+              {currentProject.reportAnalysis?.health_concerns?.length > 0 && (
                 <div className="glass-card rounded-2xl p-6 animate-fade-in-up stagger-2">
                   <div className="flex items-center gap-3 mb-4">
                     <div className="w-10 h-10 bg-amber-100 rounded-xl flex items-center justify-center text-amber-600">
@@ -483,7 +905,7 @@ export default function App() {
                   </div>
                   
                   <div className="space-y-3">
-                    {analysisResult.health_concerns.map((concern, i) => (
+                    {currentProject.reportAnalysis.health_concerns.map((concern, i) => (
                       <div key={i} className="finding-card concern">
                         <div className="flex items-start justify-between gap-4 mb-2">
                           <h4 className="font-medium text-amber-800">{concern.concern}</h4>
@@ -501,7 +923,7 @@ export default function App() {
               )}
 
               {/* Normal Findings */}
-              {analysisResult.normal_findings?.length > 0 && (
+              {currentProject.reportAnalysis?.normal_findings?.length > 0 && (
                 <div className="glass-card rounded-2xl p-6 animate-fade-in-up stagger-3">
                   <div className="flex items-center gap-3 mb-4">
                     <div className="w-10 h-10 bg-mint-100 rounded-xl flex items-center justify-center text-mint-600">
@@ -513,23 +935,18 @@ export default function App() {
                   </div>
                   
                   <div className="grid sm:grid-cols-2 gap-2">
-                    {analysisResult.normal_findings.slice(0, 8).map((finding, i) => (
+                    {currentProject.reportAnalysis.normal_findings.slice(0, 8).map((finding, i) => (
                       <div key={i} className="flex items-center justify-between p-3 bg-mint-50 rounded-lg border border-mint-100">
                         <span className="text-sm text-mint-800">{finding.parameter}</span>
                         <span className="text-sm font-medium text-mint-700">{finding.value} {finding.unit}</span>
-                    </div>
-                  ))}
+                      </div>
+                    ))}
                   </div>
-                  {analysisResult.normal_findings.length > 8 && (
-                    <p className="text-sm text-sage-500 mt-3 text-center">
-                      + {analysisResult.normal_findings.length - 8} more normal parameters
-                    </p>
-                  )}
                 </div>
               )}
 
               {/* Recommendations */}
-              {analysisResult.recommendations?.length > 0 && (
+              {currentProject.reportAnalysis?.recommendations?.length > 0 && (
                 <div className="glass-card rounded-2xl p-6 animate-fade-in-up stagger-4">
                   <div className="flex items-center gap-3 mb-4">
                     <div className="w-10 h-10 bg-cream-100 rounded-xl flex items-center justify-center text-cream-700">
@@ -541,7 +958,7 @@ export default function App() {
                   </div>
                   
                   <div className="space-y-3">
-                    {analysisResult.recommendations.map((rec, i) => (
+                    {currentProject.reportAnalysis.recommendations.map((rec, i) => (
                       <div key={i} className="finding-card recommendation">
                         <div className="flex items-start justify-between gap-4 mb-2">
                           <span className="text-xs font-medium uppercase tracking-wide text-cream-700 bg-cream-200 px-2 py-1 rounded">
@@ -550,14 +967,14 @@ export default function App() {
                           <StatusBadge status={rec.priority}>{rec.priority}</StatusBadge>
                         </div>
                         <p className="text-sage-700">{rec.recommendation}</p>
-                    </div>
-                  ))}
+                      </div>
+                    ))}
                   </div>
                 </div>
               )}
 
               {/* Follow-up Care */}
-              {analysisResult.follow_up_care && (
+              {currentProject.reportAnalysis?.follow_up_care && (
                 <div className="glass-card rounded-2xl p-6 animate-fade-in-up stagger-5">
                   <div className="flex items-center gap-3 mb-4">
                     <div className="w-10 h-10 bg-sage-100 rounded-xl flex items-center justify-center text-sage-600">
@@ -569,11 +986,11 @@ export default function App() {
                   </div>
                   
                   <div className="space-y-3">
-                    {analysisResult.follow_up_care.suggested_tests?.length > 0 && (
+                    {currentProject.reportAnalysis.follow_up_care.suggested_tests?.length > 0 && (
                       <div className="p-3 bg-sage-50 rounded-lg">
                         <p className="text-xs text-sage-500 mb-2">Suggested Tests</p>
                         <div className="flex flex-wrap gap-2">
-                          {analysisResult.follow_up_care.suggested_tests.map((test, i) => (
+                          {currentProject.reportAnalysis.follow_up_care.suggested_tests.map((test, i) => (
                             <span key={i} className="px-3 py-1 bg-white text-sm text-sage-700 rounded-full border border-sage-200">
                               {test}
                             </span>
@@ -582,23 +999,16 @@ export default function App() {
                       </div>
                     )}
                     
-                    {analysisResult.follow_up_care.specialist_referrals?.length > 0 && (
+                    {currentProject.reportAnalysis.follow_up_care.specialist_referrals?.length > 0 && (
                       <div className="p-3 bg-sage-50 rounded-lg">
                         <p className="text-xs text-sage-500 mb-2">Specialist Referrals</p>
                         <div className="flex flex-wrap gap-2">
-                          {analysisResult.follow_up_care.specialist_referrals.map((spec, i) => (
+                          {currentProject.reportAnalysis.follow_up_care.specialist_referrals.map((spec, i) => (
                             <span key={i} className="px-3 py-1 bg-white text-sm text-sage-700 rounded-full border border-sage-200">
                               {spec}
                             </span>
                           ))}
                         </div>
-                      </div>
-                    )}
-                    
-                    {analysisResult.follow_up_care.timeline && (
-                      <div className="p-3 bg-sage-50 rounded-lg">
-                        <p className="text-xs text-sage-500 mb-1">Timeline</p>
-                        <p className="text-sage-700">{analysisResult.follow_up_care.timeline}</p>
                       </div>
                     )}
                   </div>
@@ -627,7 +1037,11 @@ export default function App() {
                       </div>
                       <div>
                         <h3 className="font-medium">Dr. HealthGuide</h3>
-                        <p className="text-xs text-sage-200">AI Medical Advisor</p>
+                        <p className="text-xs text-sage-200">
+                          {isGuest 
+                            ? `${2 - (currentProject.chatCount || 0)} messages left`
+                            : 'AI Medical Advisor'}
+                        </p>
                       </div>
                     </div>
                     <button
@@ -663,13 +1077,15 @@ export default function App() {
                       type="text"
                       value={inputMessage}
                       onChange={(e) => setInputMessage(e.target.value)}
-                      placeholder="Ask about your report..."
-                      className="flex-1 px-4 py-3 bg-sage-50 border border-sage-200 rounded-xl text-sage-800 placeholder-sage-400 focus:outline-none focus:ring-2 focus:ring-mint-400 focus:border-transparent"
-                      disabled={isSending}
+                      placeholder={isGuest && currentProject.chatCount >= 2 
+                        ? "Sign in for more messages..." 
+                        : "Ask about your report..."}
+                      className="flex-1 px-4 py-3 bg-sage-50 border border-sage-200 rounded-xl text-sage-800 placeholder-sage-400 focus:outline-none focus:ring-2 focus:ring-mint-400 focus:border-transparent disabled:bg-sage-100"
+                      disabled={isSending || (isGuest && currentProject.chatCount >= 2)}
                     />
                     <button
                       type="submit"
-                      disabled={!inputMessage.trim() || isSending}
+                      disabled={!inputMessage.trim() || isSending || (isGuest && currentProject.chatCount >= 2)}
                       className="px-4 py-3 bg-sage-700 text-white rounded-xl hover:bg-sage-800 disabled:bg-sage-300 disabled:cursor-not-allowed transition-colors"
                     >
                       <SendIcon />
@@ -677,28 +1093,45 @@ export default function App() {
                   </div>
                   
                   {/* Quick Questions */}
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    {[
-                      'What should I do next?',
-                      'Explain my results',
-                      'Any dietary changes?',
-                    ].map((q, i) => (
-                      <button
-                        key={i}
-                        type="button"
-                        onClick={() => setInputMessage(q)}
-                        className="px-3 py-1.5 text-xs text-sage-600 bg-sage-100 hover:bg-sage-200 rounded-full transition-colors"
-                      >
-                        {q}
-                      </button>
-                    ))}
-                  </div>
+                  {(!isGuest || currentProject.chatCount < 2) && (
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {[
+                        'What should I do next?',
+                        'Explain my results',
+                        'Any dietary changes?',
+                      ].map((q, i) => (
+                        <button
+                          key={i}
+                          type="button"
+                          onClick={() => setInputMessage(q)}
+                          className="px-3 py-1.5 text-xs text-sage-600 bg-sage-100 hover:bg-sage-200 rounded-full transition-colors"
+                        >
+                          {q}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Guest limit warning */}
+                  {isGuest && currentProject.chatCount >= 2 && (
+                    <div className="mt-3 p-3 bg-amber-50 rounded-lg">
+                      <p className="text-xs text-amber-700">
+                        You've reached the guest chat limit.{' '}
+                        <SignInButton mode="modal">
+                          <button className="underline hover:no-underline font-medium">
+                            Sign in
+                          </button>
+                        </SignInButton>
+                        {' '}for unlimited messages.
+                      </p>
+                    </div>
+                  )}
                 </form>
               </div>
-              </div>
             </div>
-          )}
-        </main>
+          </div>
+        )}
+      </main>
 
       {/* Footer */}
       <footer className="border-t border-sage-200/50 bg-white/40 mt-16">
@@ -706,7 +1139,7 @@ export default function App() {
           <p className="text-center text-sm text-sage-500">
             DocHelp — AI-powered medical report analysis. Not a substitute for professional medical advice.
           </p>
-      </div>
+        </div>
       </footer>
     </div>
   );

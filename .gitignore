@@ -5,3 +5,4 @@ dist
 *.txt
 gemini-inputs
 gemini-responses
+*.md

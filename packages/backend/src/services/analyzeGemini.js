@@ -21,9 +21,9 @@ const analyzeWithGemini = async (reportText) => {
       contents: medicalPrompt,
     });
 
-    // Save responses for debugging
-    saveAiResponse(response.candidates[0].content.parts[0].text);
-    saveFullResponse(response);
+    // Commented out - responses now saved to database
+    // saveAiResponse(response.candidates[0].content.parts[0].text);
+    // saveFullResponse(response);
 
     // Extract and parse the JSON response
     try {

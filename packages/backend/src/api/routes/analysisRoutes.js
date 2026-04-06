@@ -1,6 +1,7 @@
 import express from 'express';
 import multer from 'multer';
 import { analyzeReport, testAnalysis } from '../controllers/analysisController.js';
+import { authMiddleware } from '../../middleware/authMiddleware.js';
 
 const router = express.Router();
 
@@ -8,6 +9,9 @@ const router = express.Router();
 // We use memoryStorage to temporarily hold the file in memory before processing.
 // This avoids writing temporary files to disk.
 const upload = multer({ storage: multer.memoryStorage() });
+
+// Apply auth middleware to all routes
+router.use(authMiddleware);
 
 // Define the API route.
 // POST /api/v1/analyze

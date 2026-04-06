@@ -1,13 +1,23 @@
 import fs from 'fs';
 import path from 'path';
-import crypto from 'crypto';
 import { analyzeWithGemini } from './analyzeGemini.js';
 import { cleanAndFormatText } from '../utils/textCleaner.js';
 import { extractTextFromPDF } from '../utils/pdfExtractor.js';
-import { initializeProjectContext } from './chatService.js';
-
 
 // This service contains the core business logic for analyzing a report.
+
+/**
+ * Extract persona from report analysis
+ */
+const extractPersonaFromReport = (analysis) => {
+  return {
+    name: analysis.patient_summary?.name || 'Patient',
+    age: analysis.patient_summary?.age || null,
+    reportType: analysis.patient_summary?.report_type || 'Medical Report',
+    keyFindings: analysis.abnormal_findings?.slice(0, 5) || [],
+    healthStatus: analysis.patient_summary?.overall_health_status || null
+  };
+};
 
 /**
  * Processes the uploaded medical report file.
@@ -29,7 +39,7 @@ export const processReport = async (file) => {
     if (file.mimetype === 'application/pdf') {
       // Parse PDF and extract text
       extractedText = await extractTextFromPDF(file.buffer);
-      saveInputs(extractedText); // Save the raw text input for debugging
+      // saveInputs(extractedText); // Commented out - now saving to DB
       console.log('PDF text extracted successfully');
     } else if (file.mimetype === 'text/plain' || file.originalname.endsWith('.txt')) {
       // Handle plain text files
@@ -51,11 +61,10 @@ export const processReport = async (file) => {
     // 4. Analyze with Gemini AI
     const analysis = await analyzeWithGemini(cleanedText);
     
-    // 5. Initialize project context for chat functionality
-    const projectId = crypto.randomUUID();
-    const persona = initializeProjectContext(projectId, analysis);
+    // 5. Extract persona from analysis
+    const persona = extractPersonaFromReport(analysis);
 
-    return { projectId, analysis, persona };
+    return { analysis, persona };
 
   } catch (error) {
     console.error('Error processing report:', error.message);
