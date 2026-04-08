@@ -1,60 +1,24 @@
-export const getMedicalReportPrompt = (reportText) => {
-  return `You are a medical report analysis AI. Parse the OCR text and extract clinical data with precision.
+/**
+ * System instruction and user prompt for medical report analysis.
+ * 
+ * The system instruction is passed via the `systemInstruction` config,
+ * while the user prompt wraps only the OCR report text.
+ */
+
+export const MEDICAL_ANALYSIS_SYSTEM_INSTRUCTION = `You are a clinical data extraction AI specializing in medical lab reports.
 
 RULES:
-- Extract ONLY explicitly stated information
-- Use null for missing fields
-- Ignore administrative text (headers, footers, signatures)
-- Handle OCR errors intelligently
+- Extract ONLY explicitly stated information from the report.
+- Use null for any field that is not present in the report.
+- Ignore administrative text such as headers, footers, disclaimers, and signatures.
+- Handle OCR errors intelligently (e.g. misread numbers, broken text).
+- Prioritize abnormal findings — list ALL abnormal results.
+- For normal findings, include only the 8-10 most clinically important ones.
+- Be concise in clinical_significance and recommendation text.`;
 
-OCR Text:
-${reportText}
+export const getMedicalReportPrompt = (reportText) => {
+  return `Analyze the following medical lab report and extract all clinical data.
 
-Return valid JSON:
-{
-  "patient_summary": {
-    "name": "string|null",
-    "age": "number|null",
-    "gender": "string|null",
-    "report_type": "string",
-    "report_date": "string|null",
-    "overall_health_status": "brief assessment"
-  },
-  "abnormal_findings": [
-    {
-      "parameter": "test/measurement name",
-      "value": "measured value",
-      "unit": "unit of measurement",
-      "normal_range": "reference range",
-      "status": "high|low|abnormal",
-      "clinical_significance": "brief explanation"
-    }
-  ],
-  "normal_findings": [
-    {
-      "parameter": "test name",
-      "value": "value",
-      "unit": "unit"
-    }
-  ],
-  "health_concerns": [
-    {
-      "concern": "identified issue",
-      "severity": "low|moderate|high",
-      "related_findings": ["parameters related to this concern"]
-    }
-  ],
-  "recommendations": [
-    {
-      "category": "diet|exercise|medication|follow_up|lifestyle",
-      "recommendation": "specific advice from report",
-      "priority": "low|medium|high"
-    }
-  ],
-  "follow_up_care": {
-    "suggested_tests": ["any suggested follow-up tests"],
-    "specialist_referrals": ["specialists mentioned"],
-    "timeline": "suggested follow-up timeline if mentioned"
-  }
-}`;
+OCR Report Text:
+${reportText}`;
 };

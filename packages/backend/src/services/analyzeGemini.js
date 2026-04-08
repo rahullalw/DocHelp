@@ -1,8 +1,7 @@
 import dotenv from 'dotenv';
 import { GoogleGenAI } from "@google/genai";
-import { saveAiResponse, saveFullResponse } from '../utils/responseSaver.js';
-import { extractJsonFromText } from '../utils/textCleaner.js';
-import { getMedicalReportPrompt } from '../prompts/medicalReportPrompt.js';
+import { getMedicalReportPrompt, MEDICAL_ANALYSIS_SYSTEM_INSTRUCTION } from '../prompts/medicalReportPrompt.js';
+import { medicalReportSchema } from '../prompts/analysisSchema.js';
 
 // Load environment variables
 dotenv.config();
@@ -12,45 +11,39 @@ const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
 
 const analyzeWithGemini = async (reportText) => {
-  const medicalPrompt = getMedicalReportPrompt(reportText);
+  const userPrompt = getMedicalReportPrompt(reportText);
 
   try {
-    // Call Gemini AI to analyze the medical report
+    const startTime = Date.now();
+
+    // Call Gemini AI with structured output config
+    // Docs: https://ai.google.dev/gemini-api/docs/structured-output
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash',
-      contents: medicalPrompt,
+      contents: userPrompt,
+      config: {
+        systemInstruction: MEDICAL_ANALYSIS_SYSTEM_INSTRUCTION,
+        responseMimeType: 'application/json',
+        responseSchema: medicalReportSchema,
+        temperature: 0.1,
+      },
     });
 
-    // Commented out - responses now saved to database
-    // saveAiResponse(response.candidates[0].content.parts[0].text);
-    // saveFullResponse(response);
+    const elapsed = ((Date.now() - startTime) / 1000).toFixed(2);
+    console.log(`Gemini analysis completed in ${elapsed}s`);
 
-    // Extract and parse the JSON response
-    try {
-      const rawText = response.candidates[0].content.parts[0].text;
-      const cleanedJson = extractJsonFromText(rawText);
-      return JSON.parse(cleanedJson);
-    } catch (parseError) {
-      console.error('Error parsing AI response:', parseError);
-      
-      // Return error response if JSON parsing fails
-      return {
-        patient_summary: {
-          report_type: "Analysis Failed",
-          overall_health_status: "Could not parse the AI's response."
-        },
-        abnormal_findings: [],
-        health_concerns: [],
-        recommendations: [{
-          category: "Error",
-          recommendation: "The AI response was not in a valid JSON format. Please check the saved response file.",
-          priority: "High",
-        }],
-        follow_up_care: {},
-        raw_ai_response: response,
-        confidence_score: 0.1
-      };
+    // Check if the response was truncated
+    const finishReason = response.candidates?.[0]?.finishReason;
+    if (finishReason === 'MAX_TOKENS') {
+      console.error('Gemini response was truncated (MAX_TOKENS). Consider increasing maxOutputTokens.');
+      throw new Error('AI response was truncated. The report may be too complex.');
     }
+
+    // With JSON mode, response.text is guaranteed valid JSON (if not truncated)
+    const rawText = response.text;
+    const analysisResult = JSON.parse(rawText);
+    return analysisResult;
+
   } catch (error) {
     console.error('Error calling Gemini AI:', error);
     throw new Error(`AI analysis failed: ${error.message}`);
