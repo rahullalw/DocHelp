@@ -1,8 +1,9 @@
 import fs from 'fs';
 import path from 'path';
-import { analyzeWithGemini } from './analyzeGemini.js';
+import { analyzeReportWithAI } from './analyzeReportWithAI.js';
 import { cleanAndFormatText } from '../utils/textCleaner.js';
 import { extractTextFromPDF } from '../utils/pdfExtractor.js';
+import { validateMedicalReport } from './reportValidator.js';
 
 // This service contains the core business logic for analyzing a report.
 
@@ -58,10 +59,13 @@ export const processReport = async (file) => {
 
     console.log('Extracted text preview:', cleanedText.substring(0, 200) + '...');
 
-    // 4. Analyze with Gemini AI
-    const analysis = await analyzeWithGemini(cleanedText);
+    // 4. Validate it's actually a medical report (hybrid: keyword → LLM fallback)
+    await validateMedicalReport(cleanedText);
+
+    // 5. Analyze with AI
+    const analysis = await analyzeReportWithAI(cleanedText);
     
-    // 5. Extract persona from analysis
+    // 6. Extract persona from analysis
     const persona = extractPersonaFromReport(analysis);
 
     return { analysis, persona };

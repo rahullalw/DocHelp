@@ -1,5 +1,4 @@
 import { processReport } from '../../services/analysisService.js';
-import { analyzeWithGemini } from '../../services/analyzeGemini.js';
 import { canCreateProject, addProject, getRemainingLimits } from '../../db/operations.js';
 import fs from 'fs/promises';
 import path from 'path';
@@ -33,7 +32,7 @@ export const analyzeReport = async (req, res) => {
       return res.status(400).json({ message: 'No file uploaded. Please provide a report.' });
     }
 
-    // Process the report
+    // Process the report (includes validation + AI analysis)
     const result = await processReport(req.file);
 
     // Create project in database
@@ -57,6 +56,14 @@ export const analyzeReport = async (req, res) => {
 
   } catch (error) {
     console.error('Error in analysisController:', error.message);
+
+    if (error.code === 'INVALID_REPORT_TYPE') {
+      return res.status(400).json({
+        message: error.message,
+        code: error.code,
+      });
+    }
+
     return res.status(500).json({ message: error.message || 'An internal server error occurred.' });
   }
 };
@@ -73,20 +80,37 @@ export const testAnalysis = async (req, res) => {
     // Find the most recent file based on timestamp in the name
     const latestFile = files.sort().reverse()[0];
     const filePath = path.join(inputsDir, latestFile);
-    
-    console.log(`Analyzing latest input file: ${latestFile}`);
 
-    const reportText = await fs.readFile(filePath, 'utf-8');
+    console.log(`[testAnalysis] Using file: ${latestFile}`);
 
-    const analysis = await analyzeWithGemini(reportText);
+    // Read the file and wrap it as a mock `file` object for processReport
+    const buffer = await fs.readFile(filePath);
+    const mockFile = {
+      originalname: latestFile,
+      mimetype: latestFile.endsWith('.pdf') ? 'application/pdf' : 'text/plain',
+      size: buffer.length,
+      buffer,
+    };
+
+    // Run the full pipeline: text extraction → validation → AI analysis
+    const result = await processReport(mockFile);
 
     return res.status(200).json({
       message: `Analysis successful for ${latestFile}`,
-      analysis: analysis
+      analysis: result.analysis,
+      persona: result.persona,
     });
 
   } catch (error) {
-    console.error('Error in testAnalysis controller:', error.message);
+    console.error('[testAnalysis] Error:', error.message);
+
+    if (error.code === 'INVALID_REPORT_TYPE') {
+      return res.status(400).json({
+        message: error.message,
+        code: error.code,
+      });
+    }
+
     return res.status(500).json({ message: error.message || 'An internal server error occurred during test analysis.' });
   }
 };
