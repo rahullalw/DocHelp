@@ -63,6 +63,18 @@ const TrashIcon = () => (
   </svg>
 );
 
+const EditIcon = () => (
+  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+  </svg>
+);
+
+const XIcon = () => (
+  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+  </svg>
+);
+
 const CheckCircleIcon = () => (
   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -128,7 +140,7 @@ const LimitsDisplay = ({ limits, isGuest }) => {
   return (
     <div className="flex items-center gap-4 text-sm">
       <span className="text-sage-500">
-        Projects: <strong className="text-sage-700">
+        Reports: <strong className="text-sage-700">
           {limits.projectsRemaining === 'unlimited' ? '∞' : `${limits.projectsRemaining}/${limits.maxProjects}`}
         </strong>
       </span>
@@ -140,6 +152,34 @@ const LimitsDisplay = ({ limits, isGuest }) => {
     </div>
   );
 };
+
+const DeleteConfirmModal = ({ reportName, onCancel, onConfirm }) => (
+  <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-sage-900/60 backdrop-blur-sm animate-fade-in">
+    <div className="bg-white rounded-2xl p-6 max-w-sm w-full shadow-2xl animate-fade-in-up">
+      <div className="w-12 h-12 bg-coral-100 rounded-full flex items-center justify-center text-coral-600 mb-4">
+        <AlertTriangleIcon />
+      </div>
+      <h3 className="text-xl font-display font-semibold text-sage-800 mb-2">Delete Report?</h3>
+      <p className="text-sage-600 mb-6">
+        Are you sure you want to permanently delete <strong className="text-sage-800">"{reportName}"</strong>? This action cannot be undone.
+      </p>
+      <div className="flex gap-3">
+        <button
+          onClick={onCancel}
+          className="flex-1 px-4 py-2 text-sm font-medium text-sage-600 bg-sage-100 hover:bg-sage-200 rounded-xl transition-colors"
+        >
+          Cancel
+        </button>
+        <button
+          onClick={onConfirm}
+          className="flex-1 px-4 py-2 text-sm font-medium text-white bg-coral-600 hover:bg-coral-700 rounded-xl shadow-lg shadow-coral-200 transition-colors"
+        >
+          Delete Report
+        </button>
+      </div>
+    </div>
+  </div>
+);
 
 // ============================================================================
 // MAIN APP
@@ -162,6 +202,11 @@ export default function App() {
   const [guestSessionId, setGuestSessionId] = useState(null);
   const [currentProject, setCurrentProject] = useState(null);
   const [projects, setProjects] = useState([]);
+  
+  // Edit & Delete state
+  const [editingReportId, setEditingReportId] = useState(null);
+  const [editingName, setEditingName] = useState('');
+  const [deleteConfirmId, setDeleteConfirmId] = useState(null);
   
   // Chat state
   const [messages, setMessages] = useState([]);
@@ -309,8 +354,6 @@ export default function App() {
   };
 
   const deleteProject = async (projectId) => {
-    if (!confirm('Are you sure you want to delete this project?')) return;
-    
     try {
       const headers = await getHeaders();
       await fetch(`${API_BASE}/api/v1/user/projects/${projectId}`, {
@@ -319,9 +362,34 @@ export default function App() {
       });
       
       setProjects(prev => prev.filter(p => p.id !== projectId));
+      setDeleteConfirmId(null);
       loadUserStatus();
     } catch (err) {
-      console.error('Failed to delete project:', err);
+      console.error('Failed to delete report:', err);
+    }
+  };
+
+  const renameReport = async (projectId, newName) => {
+    if (!newName.trim()) {
+      setEditingReportId(null);
+      return;
+    }
+    
+    try {
+      const headers = await getHeaders();
+      const response = await fetch(`${API_BASE}/api/v1/user/projects/${projectId}`, {
+        method: 'PATCH',
+        headers,
+        body: JSON.stringify({ name: newName.trim() })
+      });
+      
+      if (!response.ok) throw new Error('Failed to rename report');
+      
+      setProjects(prev => prev.map(p => p.id === projectId ? { ...p, name: newName.trim() } : p));
+      setEditingReportId(null);
+    } catch (err) {
+      console.error('Failed to rename report:', err);
+      setError(err.message);
     }
   };
 
@@ -538,7 +606,7 @@ export default function App() {
                       className="flex items-center gap-2 px-3 py-2 text-sm text-sage-600 hover:text-sage-800 hover:bg-sage-100 rounded-lg transition-colors"
                     >
                       <FolderIcon />
-                      My Projects
+                      My Reports
                     </button>
                     <UserButton afterSignOutUrl="/" />
                   </SignedIn>
@@ -577,10 +645,10 @@ export default function App() {
             </div>
 
             <div className="glass-card rounded-2xl p-8">
-              {/* Show existing projects for signed-in users */}
+              {/* Show existing reports for signed-in users */}
               {isSignedIn && projects.length > 0 && (
                 <div className="mb-6 pb-6 border-b border-sage-200">
-                  <h3 className="font-medium text-sage-700 mb-3">Your Recent Projects</h3>
+                  <h3 className="font-medium text-sage-700 mb-3">Your Recent Reports</h3>
                   <div className="space-y-2">
                     {projects.slice(0, 3).map(project => (
                       <button
@@ -601,7 +669,7 @@ export default function App() {
                       onClick={() => setView('projects')}
                       className="mt-3 text-sm text-sage-600 hover:text-sage-800"
                     >
-                      View all {projects.length} projects →
+                      View all {projects.length} reports →
                     </button>
                   )}
                 </div>
@@ -664,7 +732,7 @@ export default function App() {
                       {error.includes('Guest') && (
                         <SignInButton mode="modal">
                           <button className="mt-2 text-sm text-coral-800 underline hover:no-underline">
-                            Sign in for more projects →
+                            Sign in for more reports →
                           </button>
                         </SignInButton>
                       )}
@@ -737,7 +805,7 @@ export default function App() {
                   <ArrowLeftIcon />
                 </button>
                 <h2 className="font-display text-2xl font-semibold text-sage-800">
-                  My Projects
+                  My Reports
                 </h2>
               </div>
               
@@ -755,7 +823,7 @@ export default function App() {
             {projects.length === 0 ? (
               <div className="glass-card rounded-2xl p-12 text-center">
                 <FolderIcon className="w-16 h-16 text-sage-300 mx-auto mb-4" />
-                <h3 className="text-lg font-medium text-sage-700 mb-2">No projects yet</h3>
+                <h3 className="text-lg font-medium text-sage-700 mb-2">No reports yet</h3>
                 <p className="text-sage-500 mb-6">Upload your first medical report to get started</p>
                 <button
                   onClick={() => setView('home')}
@@ -765,28 +833,92 @@ export default function App() {
                 </button>
               </div>
             ) : (
-              <div className="space-y-3">
+              <div className="grid gap-4">
                 {projects.map(project => (
                   <div
                     key={project.id}
-                    className="glass-card rounded-xl p-4 flex items-center justify-between hover:shadow-md transition-shadow"
+                    className="glass-card rounded-2xl p-5 hover:shadow-lg transition-all border-l-4 border-l-sage-400 group relative"
                   >
-                    <button
-                      onClick={() => loadProject(project.id)}
-                      className="flex-1 text-left"
-                    >
-                      <h3 className="font-medium text-sage-800">{project.name}</h3>
-                      <div className="flex items-center gap-4 text-sm text-sage-500 mt-1">
-                        <span>{project.chatCount} messages</span>
-                        <span>{new Date(project.createdAt).toLocaleDateString()}</span>
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-1">
+                          {editingReportId === project.id ? (
+                            <div className="flex items-center gap-2 flex-1">
+                              <input
+                                autoFocus
+                                className="px-3 py-1 bg-white border border-sage-300 rounded-lg text-sage-800 font-medium w-full max-w-sm focus:ring-2 focus:ring-mint-400"
+                                value={editingName}
+                                onChange={(e) => setEditingName(e.target.value)}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') renameReport(project.id, editingName);
+                                  if (e.key === 'Escape') setEditingReportId(null);
+                                }}
+                                onBlur={() => renameReport(project.id, editingName)}
+                              />
+                            </div>
+                          ) : (
+                            <>
+                              <h3 
+                                className="text-lg font-display font-semibold text-sage-800 cursor-pointer hover:text-sage-600 transition-colors"
+                                onClick={() => loadProject(project.id)}
+                              >
+                                {project.name}
+                              </h3>
+                              <button 
+                                onClick={() => { setEditingReportId(project.id); setEditingName(project.name); }}
+                                className="p-1 text-sage-300 hover:text-sage-600 transition-colors opacity-0 group-hover:opacity-100"
+                              >
+                                <EditIcon />
+                              </button>
+                            </>
+                          )}
+                        </div>
+                        
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-y-2 gap-x-4 mt-3">
+                          <div className="flex flex-col">
+                            <span className="text-[10px] uppercase tracking-wider text-sage-400 font-bold">Patient</span>
+                            <span className="text-sm font-medium text-sage-700 truncate">
+                              {project.persona?.name || 'Unknown'}
+                            </span>
+                          </div>
+                          <div className="flex flex-col">
+                            <span className="text-[10px] uppercase tracking-wider text-sage-400 font-bold">Age</span>
+                            <span className="text-sm font-medium text-sage-700">
+                              {project.persona?.age ? `${project.persona.age} yrs` : '—'}
+                            </span>
+                          </div>
+                          <div className="flex flex-col">
+                            <span className="text-[10px] uppercase tracking-wider text-sage-400 font-bold">Report Date</span>
+                            <span className="text-sm font-medium text-sage-700">
+                              {project.persona?.reportDate || '—'}
+                            </span>
+                          </div>
+                          <div className="flex flex-col">
+                            <span className="text-[10px] uppercase tracking-wider text-sage-400 font-bold">Uploaded</span>
+                            <span className="text-sm font-medium text-sage-700">
+                              {new Date(project.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
+                            </span>
+                          </div>
+                        </div>
                       </div>
-                    </button>
-                    <button
-                      onClick={() => deleteProject(project.id)}
-                      className="p-2 text-sage-400 hover:text-coral-600 hover:bg-coral-50 rounded-lg transition-colors"
-                    >
-                      <TrashIcon />
-                    </button>
+
+                      <div className="flex items-center gap-2 shrink-0">
+                        <button
+                          onClick={() => loadProject(project.id)}
+                          className="px-4 py-2 bg-sage-50 text-sage-700 font-medium rounded-xl hover:bg-sage-100 transition-colors flex items-center gap-2 border border-sage-100"
+                        >
+                          <FileIcon />
+                          Details
+                        </button>
+                        <button
+                          onClick={() => setDeleteConfirmId(project.id)}
+                          className="p-2 text-sage-300 hover:text-coral-600 hover:bg-coral-50 rounded-xl transition-all"
+                          title="Delete report"
+                        >
+                          <TrashIcon />
+                        </button>
+                      </div>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -795,9 +927,18 @@ export default function App() {
             {limits && (
               <p className="mt-6 text-center text-sm text-sage-500">
                 {limits.projectsRemaining === 'unlimited' 
-                  ? 'Unlimited projects available'
-                  : `${limits.projectsRemaining} of ${limits.maxProjects} projects remaining`}
+                  ? 'Unlimited reports available'
+                  : `${limits.projectsRemaining} of ${limits.maxReports} reports remaining`}
               </p>
+            )}
+            
+            {/* Delete Confirmation Modal */}
+            {deleteConfirmId && (
+              <DeleteConfirmModal 
+                reportName={projects.find(p => p.id === deleteConfirmId)?.name || 'this report'}
+                onCancel={() => setDeleteConfirmId(null)}
+                onConfirm={() => deleteProject(deleteConfirmId)}
+              />
             )}
           </div>
         )}
@@ -815,9 +956,34 @@ export default function App() {
                 >
                   <ArrowLeftIcon />
                 </button>
-                <h2 className="font-display text-xl font-semibold text-sage-800">
-                  {currentProject.name}
-                </h2>
+                <div className="flex items-center gap-2 group">
+                  {editingReportId === currentProject.id ? (
+                    <input
+                      autoFocus
+                      className="px-3 py-1 bg-white border border-sage-300 rounded-lg text-sage-800 font-display text-xl font-semibold focus:ring-2 focus:ring-mint-400 focus:border-transparent outline-none"
+                      value={editingName}
+                      onChange={(e) => setEditingName(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') renameReport(currentProject.id, editingName);
+                        if (e.key === 'Escape') setEditingReportId(null);
+                      }}
+                      onBlur={() => renameReport(currentProject.id, editingName)}
+                    />
+                  ) : (
+                    <>
+                      <h2 className="font-display text-xl font-semibold text-sage-800">
+                        {currentProject.name}
+                      </h2>
+                      <button 
+                        onClick={() => { setEditingReportId(currentProject.id); setEditingName(currentProject.name); }}
+                        className="p-1 text-sage-300 hover:text-sage-600 transition-colors opacity-0 group-hover:opacity-100"
+                        title="Rename report"
+                      >
+                        <EditIcon />
+                      </button>
+                    </>
+                  )}
+                </div>
               </div>
 
               {/* Patient Summary */}

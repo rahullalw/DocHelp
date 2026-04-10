@@ -15,6 +15,7 @@ const extractPersonaFromReport = (analysis) => {
     name: analysis.patient_summary?.name || 'Patient',
     age: analysis.patient_summary?.age || null,
     reportType: analysis.patient_summary?.report_type || 'Medical Report',
+    reportDate: analysis.patient_summary?.report_date || null,
     keyFindings: analysis.abnormal_findings?.slice(0, 5) || [],
     healthStatus: analysis.patient_summary?.overall_health_status || null
   };

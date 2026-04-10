@@ -423,6 +423,24 @@ export const deleteProject = async (user, projectId) => {
 };
 
 /**
+ * Rename a project
+ */
+export const renameProject = async (user, projectId, newName) => {
+  try {
+    const [updated] = await db
+      .update(projects)
+      .set({ name: newName })
+      .where(and(eq(projects.id, projectId), eq(projects.userId, user.id)))
+      .returning();
+
+    return updated || null;
+  } catch (error) {
+    console.error('Error in renameProject:', error);
+    return null;
+  }
+};
+
+/**
  * Super user: Get all data
  */
 export const getAllData = async () => {

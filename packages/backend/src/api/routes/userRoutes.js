@@ -5,6 +5,7 @@ import {
   getAllProjects,
   getProject,
   deleteProject,
+  renameProject,
   USER_TYPE
 } from '../../db/operations.js';
 
@@ -100,6 +101,32 @@ router.delete('/projects/:projectId', async (req, res) => {
   }
 
   res.status(200).json({ message: 'Project deleted successfully' });
+});
+
+// PATCH /api/v1/user/projects/:projectId - Rename a project
+router.patch('/projects/:projectId', async (req, res) => {
+  const user = req.user;
+  const { projectId } = req.params;
+  const { name } = req.body;
+  
+  if (!user) {
+    return res.status(401).json({ message: 'Not authenticated' });
+  }
+
+  if (!name || !name.trim()) {
+    return res.status(400).json({ message: 'Name is required' });
+  }
+
+  const updated = await renameProject(user, projectId, name.trim());
+  
+  if (!updated) {
+    return res.status(404).json({ message: 'Project not found' });
+  }
+
+  res.status(200).json({ 
+    message: 'Project renamed successfully',
+    project: updated
+  });
 });
 
 export default router;
