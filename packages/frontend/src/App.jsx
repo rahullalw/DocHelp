@@ -8,6 +8,8 @@ import {
   SignedIn,
   SignedOut
 } from '@clerk/clerk-react';
+import DatePicker from 'react-datepicker';
+import 'react-datepicker/dist/react-datepicker.css';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 
@@ -248,7 +250,7 @@ export default function App() {
   
   // Edit & Delete state
   const [editingReportId, setEditingReportId] = useState(null);
-  const [editingName, setEditingName] = useState('');
+  const [editingData, setEditingData] = useState({ name: '', patientName: '', age: '', reportDate: '' });
   const [deleteConfirmId, setDeleteConfirmId] = useState(null);
   
   // Chat state
@@ -258,6 +260,26 @@ export default function App() {
   
   // Refs
   const chatEndRef = useRef(null);
+  
+  // Handlers for validation
+  const handleNameChange = (val, field) => {
+    // Only allow alphanumeric, spaces, dashes, underscores, and dots. Max 50 chars.
+    if (val.length <= 50 && /^[a-zA-Z0-9\s._\-]*$/.test(val)) {
+      setEditingData(prev => ({ ...prev, [field]: val }));
+    }
+  };
+
+  const handleAgeChange = (val) => {
+    if (val === '') {
+      setEditingData(prev => ({ ...prev, age: '' }));
+      return;
+    }
+    const num = parseInt(val, 10);
+    // age must be number and less than 150
+    if (!isNaN(num) && num >= 0 && num < 150) {
+      setEditingData(prev => ({ ...prev, age: num.toString() }));
+    }
+  };
   const fileInputRef = useRef(null);
 
   // ============================================================================
@@ -406,27 +428,52 @@ export default function App() {
     }
   };
 
-  const renameReport = async (projectId, newName) => {
-    if (!newName.trim()) {
-      setEditingReportId(null);
-      return;
-    }
+  const updateReport = async (projectId, updates) => {
+    // Optimistic UI update
+    setProjects(prev => prev.map(p => {
+      if (p.id === projectId) {
+        return {
+          ...p,
+          name: updates.name !== undefined ? updates.name : p.name,
+          persona: {
+            ...p.persona,
+            name: updates.patientName !== undefined ? updates.patientName : p.persona?.name,
+            age: updates.age !== undefined ? updates.age : p.persona?.age,
+            reportDate: updates.reportDate !== undefined ? updates.reportDate : p.persona?.reportDate
+          }
+        };
+      }
+      return p;
+    }));
     
+    if (currentProject?.id === projectId) {
+      setCurrentProject(prev => ({
+        ...prev,
+        name: updates.name !== undefined ? updates.name : prev.name,
+        persona: {
+          ...prev.persona,
+          name: updates.patientName !== undefined ? updates.patientName : prev.persona?.name,
+          age: updates.age !== undefined ? updates.age : prev.persona?.age,
+          reportDate: updates.reportDate !== undefined ? updates.reportDate : prev.persona?.reportDate
+        }
+      }));
+    }
+
+    setEditingReportId(null);
+
     try {
       const headers = await getHeaders();
       const response = await fetch(`${API_BASE}/api/v1/user/projects/${projectId}`, {
         method: 'PATCH',
         headers,
-        body: JSON.stringify({ name: newName.trim() })
+        body: JSON.stringify(updates)
       });
       
-      if (!response.ok) throw new Error('Failed to rename report');
-      
-      setProjects(prev => prev.map(p => p.id === projectId ? { ...p, name: newName.trim() } : p));
-      setEditingReportId(null);
+      if (!response.ok) throw new Error('Failed to update report');
     } catch (err) {
-      console.error('Failed to rename report:', err);
+      console.error('Failed to update report:', err);
       setError(err.message);
+      // In a more robust implementation, we would revert the optimistic update here
     }
   };
 
@@ -874,24 +921,62 @@ export default function App() {
                 {projects.map(project => (
                   <div
                     key={project.id}
-                    className="glass-card rounded-2xl p-5 hover:shadow-lg transition-all border-l-4 border-l-sage-400 group relative"
+                    className="glass-card rounded-2xl p-5 hover:shadow-[0_4px_25px_-5px_rgba(20,184,166,0.15)] transition-all border-l-4 border-l-mint-400 shadow-sm shadow-mint-400/10 group relative"
                   >
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-1">
+                      <div className="flex-1 w-full">
+                        <div className="flex items-center gap-2 mb-1 w-full">
                           {editingReportId === project.id ? (
-                            <div className="flex items-center gap-2 flex-1">
-                              <input
-                                autoFocus
-                                className="px-3 py-1 bg-white border border-sage-300 rounded-lg text-sage-800 font-medium w-full max-w-sm focus:ring-2 focus:ring-mint-400"
-                                value={editingName}
-                                onChange={(e) => setEditingName(e.target.value)}
-                                onKeyDown={(e) => {
-                                  if (e.key === 'Enter') renameReport(project.id, editingName);
-                                  if (e.key === 'Escape') setEditingReportId(null);
-                                }}
-                                onBlur={() => renameReport(project.id, editingName)}
-                              />
+                            <div className="flex flex-col gap-3 w-full">
+                              <div className="flex items-center gap-2">
+                                <input
+                                  autoFocus
+                                  className="px-3 py-1 bg-white border border-sage-300 rounded-lg text-sage-800 font-display text-lg font-semibold w-full max-w-md focus:ring-2 focus:ring-mint-400 focus:outline-none"
+                                  value={editingData.name}
+                                  placeholder="Report Name (max 50 chars)"
+                                  onChange={(e) => handleNameChange(e.target.value, 'name')}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter') updateReport(project.id, editingData);
+                                    if (e.key === 'Escape') setEditingReportId(null);
+                                  }}
+                                />
+                                <button onClick={() => updateReport(project.id, editingData)} className="p-1 px-3 text-sm font-medium text-white bg-mint-500 hover:bg-mint-600 rounded shadow-sm transition-colors">Save</button>
+                                <button onClick={() => setEditingReportId(null)} className="p-1 px-3 text-sm font-medium text-sage-600 bg-sage-100 hover:bg-sage-200 rounded transition-colors">Cancel</button>
+                              </div>
+                              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                <div className="flex flex-col">
+                                  <label className="text-[10px] uppercase tracking-wider text-sage-400 font-bold mb-1">Patient</label>
+                                  <input 
+                                    className="px-2 py-1 bg-white border border-sage-300 rounded text-sm text-sage-700 outline-none focus:border-mint-400 focus:ring-1 focus:ring-mint-400"
+                                    value={editingData.patientName}
+                                    placeholder="Patient Name"
+                                    onChange={(e) => handleNameChange(e.target.value, 'patientName')}
+                                    onKeyDown={(e) => e.key === 'Enter' && updateReport(project.id, editingData)}
+                                  />
+                                </div>
+                                <div className="flex flex-col">
+                                  <label className="text-[10px] uppercase tracking-wider text-sage-400 font-bold mb-1">Age</label>
+                                  <input 
+                                    type="number"
+                                    className="px-2 py-1 bg-white border border-sage-300 rounded text-sm text-sage-700 outline-none focus:border-mint-400 focus:ring-1 focus:ring-mint-400"
+                                    value={editingData.age}
+                                    placeholder="Age (<150)"
+                                    onChange={(e) => handleAgeChange(e.target.value)}
+                                    onKeyDown={(e) => e.key === 'Enter' && updateReport(project.id, editingData)}
+                                  />
+                                </div>
+                                <div className="flex flex-col">
+                                  <label className="text-[10px] uppercase tracking-wider text-sage-400 font-bold mb-1">Report Date</label>
+                                  <DatePicker
+                                    className="px-2 py-1 bg-white border border-sage-300 rounded text-sm text-sage-700 outline-none focus:border-mint-400 focus:ring-1 focus:ring-mint-400 w-full"
+                                    selected={editingData.reportDate && !isNaN(new Date(editingData.reportDate)) ? new Date(editingData.reportDate) : null}
+                                    onChange={(date) => setEditingData(prev => ({ ...prev, reportDate: date ? date.toLocaleDateString() : '' }))}
+                                    dateFormat="MM/dd/yyyy"
+                                    placeholderText="Select date"
+                                    isClearable
+                                  />
+                                </div>
+                              </div>
                             </div>
                           ) : (
                             <>
@@ -902,7 +987,15 @@ export default function App() {
                                 {project.name}
                               </h3>
                               <button 
-                                onClick={() => { setEditingReportId(project.id); setEditingName(project.name); }}
+                                onClick={() => { 
+                                  setEditingReportId(project.id); 
+                                  setEditingData({
+                                    name: project.name,
+                                    patientName: project.persona?.name || '',
+                                    age: project.persona?.age || '',
+                                    reportDate: project.persona?.reportDate || ''
+                                  }); 
+                                }}
                                 className="p-1 text-sage-300 hover:text-sage-600 transition-colors opacity-0 group-hover:opacity-100"
                               >
                                 <EditIcon />
@@ -911,32 +1004,34 @@ export default function App() {
                           )}
                         </div>
                         
-                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-y-2 gap-x-4 mt-3">
-                          <div className="flex flex-col">
-                            <span className="text-[10px] uppercase tracking-wider text-sage-400 font-bold">Patient</span>
-                            <span className="text-sm font-medium text-sage-700 truncate">
-                              {project.persona?.name || 'Unknown'}
-                            </span>
+                        {!editingReportId && (
+                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-y-2 gap-x-4 mt-3">
+                            <div className="flex flex-col">
+                              <span className="text-[10px] uppercase tracking-wider text-sage-400 font-bold">Patient</span>
+                              <span className="text-sm font-medium text-sage-700 truncate">
+                                {project.persona?.name || 'Unknown'}
+                              </span>
+                            </div>
+                            <div className="flex flex-col">
+                              <span className="text-[10px] uppercase tracking-wider text-sage-400 font-bold">Age</span>
+                              <span className="text-sm font-medium text-sage-700">
+                                {project.persona?.age ? `${project.persona.age}${project.persona.age.toString().includes('yr') ? '' : ' yrs'}` : '—'}
+                              </span>
+                            </div>
+                            <div className="flex flex-col">
+                              <span className="text-[10px] uppercase tracking-wider text-sage-400 font-bold">Report Date</span>
+                              <span className="text-sm font-medium text-sage-700">
+                                {project.persona?.reportDate || '—'}
+                              </span>
+                            </div>
+                            <div className="flex flex-col">
+                              <span className="text-[10px] uppercase tracking-wider text-sage-400 font-bold">Uploaded</span>
+                              <span className="text-sm font-medium text-sage-700">
+                                {new Date(project.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
+                              </span>
+                            </div>
                           </div>
-                          <div className="flex flex-col">
-                            <span className="text-[10px] uppercase tracking-wider text-sage-400 font-bold">Age</span>
-                            <span className="text-sm font-medium text-sage-700">
-                              {project.persona?.age ? `${project.persona.age} yrs` : '—'}
-                            </span>
-                          </div>
-                          <div className="flex flex-col">
-                            <span className="text-[10px] uppercase tracking-wider text-sage-400 font-bold">Report Date</span>
-                            <span className="text-sm font-medium text-sage-700">
-                              {project.persona?.reportDate || '—'}
-                            </span>
-                          </div>
-                          <div className="flex flex-col">
-                            <span className="text-[10px] uppercase tracking-wider text-sage-400 font-bold">Uploaded</span>
-                            <span className="text-sm font-medium text-sage-700">
-                              {new Date(project.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
-                            </span>
-                          </div>
-                        </div>
+                        )}
                       </div>
 
                       <div className="flex items-center gap-2 shrink-0">
@@ -965,7 +1060,7 @@ export default function App() {
               <p className="mt-6 text-center text-sm text-sage-500">
                 {limits.projectsRemaining === 'unlimited' 
                   ? 'Unlimited reports available'
-                  : `${limits.projectsRemaining} of ${limits.maxReports} reports remaining`}
+                  : `${limits.projectsRemaining} of ${limits.maxProjects} reports remaining`}
               </p>
             )}
             
@@ -998,26 +1093,74 @@ export default function App() {
                 >
                   <ArrowLeftIcon />
                 </button>
-                <div className="flex items-center gap-2 group">
+                <div className="flex items-center gap-2 group w-full max-w-xl">
                   {editingReportId === currentProject.id ? (
-                    <input
-                      autoFocus
-                      className="px-3 py-1 bg-white border border-sage-300 rounded-lg text-sage-800 font-display text-xl font-semibold focus:ring-2 focus:ring-mint-400 focus:border-transparent outline-none"
-                      value={editingName}
-                      onChange={(e) => setEditingName(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') renameReport(currentProject.id, editingName);
-                        if (e.key === 'Escape') setEditingReportId(null);
-                      }}
-                      onBlur={() => renameReport(currentProject.id, editingName)}
-                    />
+                    <div className="flex flex-col gap-3 w-full animate-fade-in">
+                      <div className="flex items-center gap-2">
+                        <input
+                          autoFocus
+                          className="px-3 py-1 bg-white border border-sage-300 rounded-lg text-sage-800 font-display text-xl font-semibold focus:ring-2 focus:ring-mint-400 focus:border-transparent outline-none w-full"
+                          value={editingData.name}
+                          placeholder="Report Name (max 50 chars)"
+                          onChange={(e) => handleNameChange(e.target.value, 'name')}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') updateReport(currentProject.id, editingData);
+                            if (e.key === 'Escape') setEditingReportId(null);
+                          }}
+                        />
+                        <button onClick={() => updateReport(currentProject.id, editingData)} className="p-1 px-3 text-sm font-medium text-white bg-mint-500 hover:bg-mint-600 rounded shadow-sm transition-colors">Save</button>
+                        <button onClick={() => setEditingReportId(null)} className="p-1 px-3 text-sm font-medium text-sage-600 bg-sage-100 hover:bg-sage-200 rounded transition-colors">Cancel</button>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        <div className="flex flex-col">
+                          <label className="text-[10px] mx-1 uppercase tracking-wider text-sage-400 font-bold mb-1">Patient</label>
+                          <input 
+                            className="px-3 py-1.5 bg-white border border-sage-300 rounded-lg text-sm text-sage-700 outline-none focus:border-mint-400 focus:ring-1 focus:ring-mint-400"
+                            value={editingData.patientName}
+                            placeholder="Patient Name"
+                            onChange={(e) => handleNameChange(e.target.value, 'patientName')}
+                            onKeyDown={(e) => e.key === 'Enter' && updateReport(currentProject.id, editingData)}
+                          />
+                        </div>
+                        <div className="flex flex-col">
+                          <label className="text-[10px] mx-1 uppercase tracking-wider text-sage-400 font-bold mb-1">Age</label>
+                          <input 
+                            type="number"
+                            className="px-3 py-1.5 bg-white border border-sage-300 rounded-lg text-sm text-sage-700 outline-none focus:border-mint-400 focus:ring-1 focus:ring-mint-400"
+                            value={editingData.age}
+                            placeholder="Age (<150)"
+                            onChange={(e) => handleAgeChange(e.target.value)}
+                            onKeyDown={(e) => e.key === 'Enter' && updateReport(currentProject.id, editingData)}
+                          />
+                        </div>
+                        <div className="flex flex-col">
+                          <label className="text-[10px] mx-1 uppercase tracking-wider text-sage-400 font-bold mb-1">Report Date</label>
+                          <DatePicker
+                            className="px-3 py-1.5 bg-white border border-sage-300 rounded-lg text-sm text-sage-700 outline-none focus:border-mint-400 focus:ring-1 focus:ring-mint-400 w-full"
+                            selected={editingData.reportDate && !isNaN(new Date(editingData.reportDate)) ? new Date(editingData.reportDate) : null}
+                            onChange={(date) => setEditingData(prev => ({ ...prev, reportDate: date ? date.toLocaleDateString() : '' }))}
+                            dateFormat="MM/dd/yyyy"
+                            placeholderText="Select date"
+                            isClearable
+                          />
+                        </div>
+                      </div>
+                    </div>
                   ) : (
                     <>
                       <h2 className="font-display text-xl font-semibold text-sage-800">
                         {currentProject.name}
                       </h2>
                       <button 
-                        onClick={() => { setEditingReportId(currentProject.id); setEditingName(currentProject.name); }}
+                        onClick={() => { 
+                          setEditingReportId(currentProject.id); 
+                          setEditingData({
+                            name: currentProject.name,
+                            patientName: currentProject.persona?.name || '',
+                            age: currentProject.persona?.age || '',
+                            reportDate: currentProject.persona?.reportDate || ''
+                          }); 
+                        }}
                         className="p-1 text-sage-300 hover:text-sage-600 transition-colors opacity-0 group-hover:opacity-100"
                         title="Rename report"
                       >

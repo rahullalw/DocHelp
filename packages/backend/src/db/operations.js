@@ -423,19 +423,37 @@ export const deleteProject = async (user, projectId) => {
 };
 
 /**
- * Rename a project
+ * Update project details (name and persona metadata)
  */
-export const renameProject = async (user, projectId, newName) => {
+export const updateProjectDetails = async (user, projectId, updates) => {
   try {
+    const { name, patientName, age, reportDate } = updates;
+    
+    const updateSet = {};
+    if (name !== undefined && name.trim() !== '') {
+      updateSet.name = name.trim();
+    }
+    
+    if (patientName !== undefined || age !== undefined || reportDate !== undefined) {
+      const personaUpd = {};
+      if (patientName !== undefined) personaUpd.name = patientName;
+      if (age !== undefined) personaUpd.age = age;
+      if (reportDate !== undefined) personaUpd.reportDate = reportDate;
+      
+      updateSet.persona = sql`persona || ${JSON.stringify(personaUpd)}::jsonb`;
+    }
+
+    if (Object.keys(updateSet).length === 0) return null;
+
     const [updated] = await db
       .update(projects)
-      .set({ name: newName })
+      .set(updateSet)
       .where(and(eq(projects.id, projectId), eq(projects.userId, user.id)))
       .returning();
 
     return updated || null;
   } catch (error) {
-    console.error('Error in renameProject:', error);
+    console.error('Error in updateProjectDetails:', error);
     return null;
   }
 };
