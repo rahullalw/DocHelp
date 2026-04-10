@@ -181,7 +181,49 @@ const DeleteConfirmModal = ({ reportName, onCancel, onConfirm }) => (
   </div>
 );
 
+const ReportLoadingSkeleton = () => (
+  <div className="grid lg:grid-cols-5 gap-6 p-4">
+    <div className="lg:col-span-3 space-y-6">
+      <div className="h-8 w-1/3 bg-sage-200 animate-pulse rounded-lg mb-6"></div>
+      
+      <div className="glass-card rounded-2xl p-6">
+        <div className="flex items-center gap-3 mb-4">
+          <div className="w-10 h-10 bg-sage-200 animate-pulse rounded-xl"></div>
+          <div className="space-y-2">
+            <div className="h-5 w-32 bg-sage-200 animate-pulse rounded"></div>
+            <div className="h-4 w-24 bg-sage-100 animate-pulse rounded"></div>
+          </div>
+        </div>
+        <div className="grid sm:grid-cols-2 gap-4">
+          <div className="h-16 bg-sage-100 animate-pulse rounded-lg"></div>
+          <div className="h-16 bg-sage-100 animate-pulse rounded-lg"></div>
+          <div className="h-16 bg-sage-100 animate-pulse rounded-lg sm:col-span-2"></div>
+        </div>
+      </div>
+
+      <div className="glass-card rounded-2xl p-6 opacity-60">
+        <div className="h-6 w-48 bg-sage-200 animate-pulse rounded mb-4"></div>
+        <div className="space-y-3">
+          <div className="h-24 bg-sage-100 animate-pulse rounded-lg"></div>
+          <div className="h-24 bg-sage-100 animate-pulse rounded-lg"></div>
+        </div>
+      </div>
+    </div>
+
+    <div className="lg:col-span-2">
+      <div className="glass-card rounded-2xl h-[500px] flex flex-col items-center justify-center p-8 text-center border-2 border-dashed border-sage-200">
+        <div className="w-16 h-16 bg-gradient-to-br from-mint-200 to-sage-200 rounded-full flex items-center justify-center animate-pulse mb-4">
+          <div className="w-8 h-8 rounded-full bg-white/50"></div>
+        </div>
+        <h3 className="text-lg font-medium text-sage-600 mb-2">Fetching your report... ✨</h3>
+        <p className="text-sm text-sage-400">Dr. HealthGuide is preparing your personalized insights.</p>
+      </div>
+    </div>
+  </div>
+);
+
 // ============================================================================
+
 // MAIN APP
 // ============================================================================
 
@@ -202,6 +244,7 @@ export default function App() {
   const [guestSessionId, setGuestSessionId] = useState(null);
   const [currentProject, setCurrentProject] = useState(null);
   const [projects, setProjects] = useState([]);
+  const [isProjectLoading, setIsProjectLoading] = useState(false);
   
   // Edit & Delete state
   const [editingReportId, setEditingReportId] = useState(null);
@@ -305,51 +348,45 @@ export default function App() {
     }
   };
 
-  const loadProject = async (projectId) => {
+  const loadProject = async (projectId, preloadedData = null) => {
     try {
-      const headers = await getHeaders();
-      const response = await fetch(`${API_BASE}/api/v1/user/projects/${projectId}`, { headers });
+      setIsProjectLoading(true);
+      setView('project');
+      setCurrentProject(preloadedData || { id: projectId, name: 'Loading Report...' });
       
-      if (!response.ok) {
+      const headers = await getHeaders();
+
+      // Parallel fetch
+      const [projectRes, summaryRes] = await Promise.all([
+        fetch(`${API_BASE}/api/v1/user/projects/${projectId}`, { headers }),
+        fetch(`${API_BASE}/api/v1/chat/initial/${projectId}`, { headers })
+      ]);
+      
+      if (!projectRes.ok) {
         throw new Error('Failed to load project');
       }
       
-      const data = await response.json();
-      setCurrentProject(data.project);
+      const projectData = await projectRes.json();
+      const summaryData = await summaryRes.ok ? await summaryRes.json() : null;
+      
+      setCurrentProject(projectData.project);
       
       // If there's conversation history, use it
-      if (data.project.conversationHistory?.length > 0) {
-        setMessages(data.project.conversationHistory);
+      if (projectData.project.conversationHistory?.length > 0) {
+        setMessages(projectData.project.conversationHistory);
+      } else if (summaryData) {
+        setMessages([{ role: 'assistant', content: summaryData.summary }]);
       } else {
-        // No history - get AI-generated initial summary
-        setMessages([{ role: 'assistant', content: 'Loading your report analysis...' }]);
-        
-        try {
-          const summaryResponse = await fetch(`${API_BASE}/api/v1/chat/initial/${projectId}`, { headers });
-          const summaryData = await summaryResponse.json();
-          
-          if (summaryResponse.ok) {
-            setMessages([{ role: 'assistant', content: summaryData.summary }]);
-          } else {
-            // Fallback to simple message
-            setMessages([{
-              role: 'assistant',
-              content: `Hello${data.project.persona?.name ? `, ${data.project.persona.name}` : ''}! I'm Dr. HealthGuide. I've reviewed your ${data.project.persona?.reportType || 'medical report'}. What would you like to know about your results?`
-            }]);
-          }
-        } catch (summaryErr) {
-          console.error('Failed to load initial summary:', summaryErr);
-          // Fallback to simple message
-          setMessages([{
-            role: 'assistant',
-            content: `Hello${data.project.persona?.name ? `, ${data.project.persona.name}` : ''}! I'm Dr. HealthGuide. I've reviewed your ${data.project.persona?.reportType || 'medical report'}. What would you like to know about your results?`
-          }]);
-        }
+        setMessages([{
+          role: 'assistant',
+          content: `Hello${projectData.project.persona?.name ? `, ${projectData.project.persona.name}` : ''}! I'm Dr. HealthGuide. I've reviewed your ${projectData.project.persona?.reportType || 'medical report'}. What would you like to know about your results?`
+        }]);
       }
-      
-      setView('project');
     } catch (err) {
       setError(err.message);
+      setView('projects');
+    } finally {
+      setIsProjectLoading(false);
     }
   };
 
@@ -945,6 +982,11 @@ export default function App() {
 
         {/* PROJECT VIEW */}
         {view === 'project' && currentProject && (
+          isProjectLoading && !currentProject.reportAnalysis ? (
+            <div className="animate-fade-in">
+              <ReportLoadingSkeleton />
+            </div>
+          ) : (
           <div className="grid lg:grid-cols-5 gap-6 animate-fade-in">
             {/* Analysis Results - Left Panel */}
             <div className="lg:col-span-3 space-y-6">
@@ -1296,6 +1338,7 @@ export default function App() {
               </div>
             </div>
           </div>
+          )
         )}
       </main>
 

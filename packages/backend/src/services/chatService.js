@@ -1,5 +1,6 @@
 import { GoogleGenAI } from "@google/genai";
 import { getDoctorSystemPrompt, getAdvicePrompt, getInitialSummaryPrompt } from '../prompts/doctorPersona.js';
+import { saveInitialSummaryToPersona } from '../db/operations.js';
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
@@ -51,6 +52,12 @@ export const clearChatSession = (projectId) => {
  * @returns {Promise<string>} - The AI summary
  */
 export const generateInitialSummary = async (project) => {
+  // Return cached summary if it exists
+  if (project.persona?.initialSummary) {
+    console.log('[Cache HIT] Returning cached initial summary');
+    return project.persona.initialSummary;
+  }
+
   const systemPrompt = getDoctorSystemPrompt(project.reportAnalysis, project.persona);
   const summaryPrompt = getInitialSummaryPrompt(project.persona);
 
@@ -60,7 +67,16 @@ export const generateInitialSummary = async (project) => {
     contents: summaryPrompt
   });
 
-  return response.candidates[0].content.parts[0].text;
+  const summary = response.candidates[0].content.parts[0].text;
+
+  // Persist to DB (fire-and-forget, don't block the response)
+  const projectId = project.id || project._id;
+  const userId = project.userId || project.user_id; // Depend on schema
+  if (projectId && userId) {
+    saveInitialSummaryToPersona(projectId, userId, summary).catch(console.error);
+  }
+
+  return summary;
 };
 
 /**

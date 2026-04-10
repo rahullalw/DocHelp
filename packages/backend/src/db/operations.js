@@ -441,6 +441,21 @@ export const renameProject = async (user, projectId, newName) => {
 };
 
 /**
+ * Save initial AI summary to project persona
+ */
+export const saveInitialSummaryToPersona = async (projectId, userId, summary) => {
+  try {
+    // using sql`persona || jsonb_build_object('initialSummary', ${summary}::text)` would work,
+    // let's use the object merge operator:
+    await db.update(projects)
+      .set({ persona: sql`persona || ${JSON.stringify({ initialSummary: summary })}::jsonb` })
+      .where(and(eq(projects.id, projectId), eq(projects.userId, userId)));
+  } catch (error) {
+    console.error('Error in saveInitialSummaryToPersona:', error);
+  }
+};
+
+/**
  * Super user: Get all data
  */
 export const getAllData = async () => {
