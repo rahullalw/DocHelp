@@ -229,6 +229,22 @@ const ReportLoadingSkeleton = () => (
 // MAIN APP
 // ============================================================================
 
+const formatErrorMessage = (msg) => {
+  if (!msg || typeof msg !== 'string') return msg || 'An unknown error occurred.';
+  try {
+    const match = msg.match(/({.*})/);
+    if (match) {
+      const parsed = JSON.parse(match[1]);
+      if (parsed.error && parsed.error.message) {
+         return msg.substring(0, match.index) + parsed.error.message;
+      }
+    }
+  } catch (e) {
+    // ignore parsing errors
+  }
+  return msg;
+};
+
 export default function App() {
   // Clerk hooks
   const { isLoaded: isClerkLoaded, isSignedIn, user: clerkUser } = useUser();
@@ -405,7 +421,7 @@ export default function App() {
         }]);
       }
     } catch (err) {
-      setError(err.message);
+      setError(formatErrorMessage(err.message));
       setView('projects');
     } finally {
       setIsProjectLoading(false);
@@ -472,7 +488,7 @@ export default function App() {
       if (!response.ok) throw new Error('Failed to update report');
     } catch (err) {
       console.error('Failed to update report:', err);
-      setError(err.message);
+      setError(formatErrorMessage(err.message));
       // In a more robust implementation, we would revert the optimistic update here
     }
   };
@@ -585,7 +601,7 @@ export default function App() {
       loadUserStatus();
 
     } catch (err) {
-      setError(err.message);
+      setError(formatErrorMessage(err.message));
     } finally {
       setIsUploading(false);
     }

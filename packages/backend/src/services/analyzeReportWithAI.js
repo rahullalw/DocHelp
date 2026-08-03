@@ -18,7 +18,7 @@ const analyzeReportWithAI = async (reportText) => {
   try {
     const startTime = Date.now();
     const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
+      model: process.env.AI_MODEL,
       contents: userPrompt,
       config: {
         systemInstruction: MEDICAL_ANALYSIS_SYSTEM_INSTRUCTION,
